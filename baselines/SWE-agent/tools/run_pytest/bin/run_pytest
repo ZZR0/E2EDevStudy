@@ -1,0 +1,205 @@
+#!/usr/bin/env python3
+
+import json
+import os
+from pathlib import Path
+import re
+import subprocess
+import sys
+import textwrap
+import argparse
+
+# Default pytest command if the environment variable is not set
+DEFAULT_PYTEST_COMMAND = "pytest -x -v -rfE --disable-warnings -o asyncio_default_fixture_loop_scope=function"
+
+def parse_pytest_output(output: str) -> (dict, str):
+    """
+    Parses the verbose output of a pytest run to extract structured information
+    and also constructs a concise summary for printing.
+    """
+    test_state = {
+        "result": "ERROR",
+        "test_cases": [],
+        "failures": [],
+        "summary": {},
+    }
+    # print(f"output: {output}")
+    # Determine overall result
+    result_match = re.search(r"PYTEST_RESULT: ([\w\s()]+)", output)
+    if result_match:
+        test_state["result"] = result_match.group(1)
+
+    # Extract individual test case results from verbose output
+    for line in output.splitlines():
+        match = re.match(r"^(.+?)::(\w+)(\[.*?\])?\s+(PASSED|FAILED|SKIPPED)", line)
+        if match:
+            test_file, test_name, _, status = match.groups()
+            full_name = f"{test_file}::{test_name}{match.group(3) or ''}"
+            test_state["test_cases"].append({"name": full_name, "status": status})
+
+    # Extract summary line for counts
+    summary_match = re.search(r"=+ (.*) in ([\d\.]+)s", output)
+    if summary_match:
+        summary_str = summary_match.group(1)
+        time_s = float(summary_match.group(2))
+        summary = {"total_time_s": time_s}
+        parts = summary_str.split(', ')
+        for part in parts:
+            try:
+                count, *desc_parts = part.split(' ', 1)
+                desc = desc_parts[0] if desc_parts else ''
+                if desc in ('failed', 'passed', 'skipped', 'error'):
+                    summary[desc] = int(count)
+            except (ValueError, IndexError):
+                pass
+        test_state["summary"] = summary
+
+    # Extract failure details
+    failure_block = ""
+    failures_block_match = re.search(r"=+ FAILURES =+\n(.*?)\n=+ short test summary info =+", output, re.DOTALL)
+    if failures_block_match:
+        failure_block_content = failures_block_match.group(1)
+        failure_chunks = re.split(r"_{5,}\s+(.*?)\s+_{5,}", failure_block_content)
+        if failure_chunks and failure_chunks[0].strip() == '':
+            failure_chunks = failure_chunks[1:]
+        
+        for i in range(0, len(failure_chunks) - 1, 2):
+            test_name = failure_chunks[i].strip()
+            details = failure_chunks[i+1].strip()
+            test_state["failures"].append({"test_name": test_name, "details": details})
+        
+        # For concise output, we only take the first failure.
+        failure_block = "=================================== FAILURES ===================================\n"
+        failure_block += f"_________________________________ {test_state['failures'][0]['test_name']} _________________________________\n"
+        failure_block += f"{test_state['failures'][0]['details']}\n"
+        failure_block += "=========================== short test summary info ============================\n"
+        failure_block += f"FAILED {test_state['failures'][0]['test_name'].split('::')[0]}\n"
+
+    # Construct concise output for printing
+    concise_output = "--- PYTEST STDOUT START ---\n"
+    if failure_block:
+        concise_output += failure_block
+    if summary_match:
+        concise_output += f"{summary_match.group(0)}\n"
+    concise_output += "--- PYTEST STDOUT END ---\n"
+    
+    # Add stderr if it exists
+    stderr_match = re.search(r"--- PYTEST STDERR START ---\n(.*?)\n--- PYTEST STDERR END ---", output, re.DOTALL)
+    if stderr_match:
+        concise_output += f"--- PYTEST STDERR START ---\n{stderr_match.group(1)}\n--- PYTEST STDERR END ---\n"
+    
+    if test_state.get("result"):
+        concise_output += f"PYTEST_RESULT: {test_state['result']}\n"
+
+    return test_state, concise_output.strip()
+
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="Run pytest with optional arguments."
+    )
+    parser.add_argument(
+        "pytest_args",
+        nargs="?",
+        default="",
+        help="Optional arguments to pass to pytest, e.g., a path to a test file/directory or other pytest flags.",
+    )
+    args = parser.parse_args()
+
+    repo_root_str = os.getenv("ROOT", ".")
+    repo_root = Path(repo_root_str)
+    if not repo_root.is_dir():
+        print(f"Error: Repository root '{repo_root_str}' not found or is not a directory.")
+        print(f"PYTEST_RESULT: ERROR (repository root not found: {repo_root_str})")
+        sys.exit(1)
+
+    # Get the pytest command from an environment variable, or use the default.
+    # The environment variable PYTEST_EXEC_COMMAND should contain the full command string.
+    pytest_command_str = os.getenv("PYTEST_EXEC_COMMAND", DEFAULT_PYTEST_COMMAND)
+
+    # Check for pytest_args argument and append to command if it exists
+    if args.pytest_args:
+        pytest_command_str += f" {args.pytest_args}"
+        
+    print(f"PYTEST_EXEC_COMMAND: {pytest_command_str}")
+    try:
+        # We use shell=True here because pytest_command_str is a full command string
+        # that might include shell features (like pipes or multiple arguments not easily tokenized).
+        # Ensure the source of PYTEST_EXEC_COMMAND is trusted.
+        process = subprocess.run(
+            pytest_command_str,
+            shell=True, # Important: allows the command string to be interpreted by the shell
+            capture_output=True,
+            text=True,
+            cwd=repo_root,
+            check=False
+        )
+
+        full_test_output = f"""--- PYTEST STDOUT START ---\n{process.stdout.strip() if process.stdout.strip() else "<empty>"}\n--- PYTEST STDOUT END ---\n"""
+        
+        if process.stderr.strip() != "":
+            stderr_content = process.stderr.strip()
+            if len(stderr_content) > 8192:
+                omitted_len = len(stderr_content) - 8192
+                stderr_content = (
+                    f"{stderr_content[:4096]}\n"
+                    f"... ({omitted_len} characters omitted) ...\n"
+                    f"{stderr_content[-4096:]}"
+                )
+            full_test_output = f"""--- PYTEST STDERR START ---\n{stderr_content}\n--- PYTEST STDERR END ---\n""" + full_test_output 
+        
+        if process.returncode == 0:
+            full_test_output += "PYTEST_RESULT: PASSED\n"
+        else:
+            full_test_output += f"PYTEST_RESULT: FAILED (return code: {process.returncode})\n"
+        
+        test_state, concise_test_output = parse_pytest_output(full_test_output)
+
+        with open("/tmp/pytest_output.json", "w", encoding="utf-8") as f:
+            # Serialize the structured test_state into a JSON string.
+            # The framework expects the tool's output to be a string. By wrapping
+            # the structured data in a JSON string, we satisfy the type constraint
+            # while preserving the data.
+            test_state_string = json.dumps(test_state, indent=4, ensure_ascii=False)
+            # Dump the string to the file as a JSON-encoded string.
+            json.dump(test_state_string, f)
+        
+        print(full_test_output)
+        
+        if os.getenv("AGENT_MODE", "default") in ["eval_test", "eval_judge"]:
+            header = "IMPORTANT: You are in EVALUATION mode."
+            body_unwrapped = (
+                "As a test migrator, your goal is to improve and expand the test file (test_*.py) to reveal the quality and robustness of the provided code. "
+                "A failing test is a successful discovery of a bug, not an error to be fixed. "
+                "You MUST NOT modify the test to make it pass. "
+                "You must keep the failing test case and explain the root cause of the source code's failure."
+            )
+
+            width = 90
+            body_lines = textwrap.wrap(body_unwrapped, width=width)
+
+            content_width = max(len(header), width)
+            border = "─" * (content_width + 2)
+
+            print(f"┌{border}┐")
+            print(f"│ {header.center(content_width)} │")
+            print(f"├{border}┤")
+
+            for line in body_lines:
+                print(f"│ {line.ljust(content_width)} │")
+
+            print(f"└{border}┘")
+
+    except FileNotFoundError:
+        # This error might occur if the command itself (e.g., 'pytest') isn't found,
+        # or if shell=True and the command string is malformed in a way that the shell can't find an executable.
+        print(f"Error: The command '{pytest_command_str.split()[0]}' (or the full command) was not found or could not be executed. Please ensure it is installed and accessible, and the PYTEST_EXEC_COMMAND variable is set correctly.")
+        print("PYTEST_RESULT: ERROR (command not found or execution failed)")
+        sys.exit(127) 
+    except Exception as e:
+        print(f"An unexpected error occurred while preparing or running pytest: {e}")
+        print(f"PYTEST_RESULT: ERROR (execution error: {str(e).splitlines()[0]})")
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

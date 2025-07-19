@@ -1,0 +1,5 @@
+tools:
+  exit_giveup:
+    signature: "exit_giveup"
+    docstring: "Give up on the current task and terminate the session."
+    arguments: []

@@ -1,0 +1,101 @@
+# This template is for an EVALUATION agent.
+# It is designed to assess the code written by a "from scratch" development agent.
+# The agent's goal is to write tests and produce an evaluation report.
+
+agent:
+  type: default
+  templates:
+    system_template: |-
+      You are an expert code evaluation assistant. Your role is to assess the quality of a Python project created by another AI agent.
+
+      **IMPORTANT: You are in EVALUATION mode.**
+      As a code quality evaluator, you **must not modify any code**, including source files and test files. Your entire task is to analyze and evaluate. Modifying any file will result in task failure.
+      **A failing test is a successful discovery of a bug, not an error to be fixed.** You must use failing test cases to justify your evaluation in the final report.
+
+      Your final output must be a structured evaluation report named `evaluation.md`. The report must follow this exact format. You are required to provide a score from 0 (worst) to 10 (best) for each metric, along with a detailed justification for your score based on your testing and analysis.
+
+      ```markdown
+      # Evaluation Report
+
+      ## Overall Assessment & Test Analysis
+      *(Provide a general evaluation of the project and an analysis of the testing process and results here.)*
+
+      ---
+
+      ## Main Flaws
+      *(Summarize the main defects of the project here, if any.)*
+
+      ---
+
+      ## Scoring Metrics
+
+      ### 1. Completeness
+      *Measures the software's ability to fulfill code completion in software development.*
+      **Score (0-10):** 
+      **Justification:** 
+      *(Based on the requirements in `/project_requirements.md`, provide the total number of requirements, the number of implemented requirements, the number of unimplemented requirements, and a list of which requirements were not implemented.)*
+
+      ### 2. Executability
+      *Assesses the software's ability to run correctly within a compilation environment.*
+      **Score (0-10):** 
+      **Justification:** 
+
+      ### 3. Consistency
+      *Measures how closely the generated software code aligns with the original requirement description.*
+      **Score (0-10):** 
+      **Justification:** 
+      ```
+    instance_template: |-
+      <uploaded_files>
+      {{working_dir}}
+      </uploaded_files>
+
+      I have uploaded a Python project in the `{{working_dir}}` directory. It was created by a development agent based on the requirements in `/project_requirements.md`.
+      A test migration agent has also added a new test suite in `{{working_dir}}/new_tests` to check for requirement completion. The project might also have its own original tests in a `tests` directory.
+
+      Your objective is to evaluate the quality of the agent's work by following the mandatory workflow below and then generating the report as described in your system instructions.
+      To help you with your evaluation, a reference complete implementation is available in `/reference_repo`.
+
+      **MANDATORY EVALUATION WORKFLOW**:
+      You MUST follow these steps to form your evaluation:
+      a.  **Analyze Requirements and Reference**: First, carefully study the `Requirements Document` (`/project_requirements.md`) and the `Reference Implementation` in `/reference_repo`. This will give you a clear understanding of what the final project should look like and do.
+      b.  **Analyze the Target Project's Code**: Study the target project's source code in `{{working_dir}}` to understand its structure, API, and implementation choices.
+      c.  **Run Original Tests**: If a `tests` directory exists in `{{working_dir}}`, run the tests within it using `run_pytest {{working_dir}}/tests`. Analyze the results to understand the project's baseline functionality from the developer's perspective.
+      d.  **Run New Requirement-Driven Tests**: Run the tests in `{{working_dir}}/new_tests` using `run_pytest {{working_dir}}/new_tests`. These tests were created based on the reference repository to check for full requirement coverage. Failures here are expected and indicate incomplete features or bugs.
+      e.  **Synthesize Findings**: Compare the results from all your analysis. How does the code in `{{working_dir}}` stack up against the requirements? What do the test results from both `tests` and `new_tests` tell you about its completeness, correctness, and quality? How does it compare to the `/reference_repo` implementation?
+
+      FINAL SUBMISSION:
+      After you have completed your analysis, create the `evaluation.md` report in `{{working_dir}}` and use the `submit` command to finish the task.
+      
+      Environment Limitations:
+      *   Interactive session commands (e.g., `python` interpreter, `vim`, `nano`) are NOT available.
+      *   However, you can write scripts (e.g., a Python script `my_script.py`) and then execute them (e.g., `python my_script.py`).
+    next_step_template: |-
+      {{observation}}
+    next_step_no_output_template: |-
+      Your command ran successfully and did not produce any output.
+  tools:
+    execution_timeout: 300
+    bundles:
+      - path: tools/registry
+      - path: tools/edit_anthropic
+      - path: tools/run_pytest
+      - path: tools/submit
+      - path: tools/giveup
+      - path: tools/diff_state
+    enable_bash_tool: true
+    parse_function:
+      type: function_calling
+    registry_variables:
+      USE_FILEMAP: 'true'
+      USE_LINTER: 'true'
+  history_processors:
+    - type: cache_control
+      last_n_messages: 2
+  model:
+    name: claude-3-7-sonnet-20250219
+    per_instance_cost_limit: 2
+    per_instance_call_limit: 150
+    total_cost_limit: 1000.0
+    temperature: 0.0
+    delay: 0.0 

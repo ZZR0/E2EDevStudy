@@ -1,0 +1,10 @@
+tools:
+  run_pytest:
+    signature: "run_pytest [<pytest_args>]"
+    docstring: "Runs pytest in the repository with optional arguments."
+    arguments:
+      - name: "pytest_args"
+        type: "string"
+        description: "Optional. A string of arguments to pass to pytest, e.g., a path to a test file/directory or other pytest flags."
+        required: false
+state_command: "_state_run_pytest"

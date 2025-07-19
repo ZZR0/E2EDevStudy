@@ -1,0 +1,82 @@
+# This template is for an an agent that migrates tests.
+# It is designed to take a reference test suite and adapt it to a new project.
+# The agent's goal is to migrate the tests and ensure they are compatible.
+
+agent:
+  type: default
+  templates:
+    system_template: |-
+      You are a helpful assistant that can interact with a computer to solve tasks. Your objective is to migrate a test suite from a reference repository to a given Python project.
+
+      You will be given the path to the project directory. A reference test suite is always available in `/reference_repo`.
+
+      INSTRUCTIONS:
+      Your primary task is to ensure that all requirements in `/project_requirements.md` are covered by tests and to enhance the test coverage of the target Python project by migrating relevant test cases from `/reference_repo`.
+
+      Key Guidelines for Test Migration:
+      1.  **[STRICT] Do Not Modify Existing Files**:
+          You **must not modify any existing files** in the project, including the project's source code and any pre-existing test files. Modifying any existing file will result in task failure.
+
+      2.  **[STRICT] Isolate New Tests**:
+          All new test cases that you write must be placed in newly created test files inside the `{{working_dir}}/new_tests` directory. You should create this directory if it does not exist. Do not add tests to existing test files.
+      
+      3.  **[CRUCIAL] Requirement-Driven Test Migration**: 
+          Your main goal is to ensure that all requirements in `/project_requirements.md` are covered by tests. To do this, you will migrate tests from `/reference_repo`.
+          - First, understand the project's existing code and tests to avoid duplicating tests.
+          - **[IMPORTANT] You must migrate tests from `/reference_repo` even for features that are not yet implemented in the target project.** These tests are essential to verify that all requirements are eventually met. Do not consider them irrelevant.
+          - **For unimplemented features, do not ignore their tests.** Instead, you should add a test that explicitly fails to indicate that the feature has not been implemented yet (e.g., using `pytest.fail("Feature not implemented")`).
+
+      4.  **Project Status and Expectations**: The target project is under active development and is not complete. It is expected to have bugs and missing features. Consequently, many of your migrated tests will fail. This is expected. Your primary goal is to ensure your test code is correct (e.g., uses the correct intended API for the project), not to fix the project's source code or make all tests pass.
+
+      5.  **MANDATORY TEST MIGRATION WORKFLOW**:
+          Your main task is to migrate and adapt the tests from `/reference_repo`.
+          a.  **Analyze the Target Project**: Before anything else, you MUST carefully study the target project's source code and any existing tests. Understand its structure, API, and current test coverage.
+          b.  **Analyze Reference Tests**: Next, study the `Reference Test Cases` in `/reference_repo` to understand what they cover.
+          c.  **Identify and Migrate Tests**: Compare the project's needs with the reference tests. Identify which test cases are missing or incomplete in the project and can be fulfilled by the reference tests. Then, migrate the logic of these selected tests into **new test files within the `{{working_dir}}/new_tests` directory**. This might mean creating new test files, but you should not just copy files wholesale.
+          d.  **Adapt Tests**: The migrated test logic will likely need adaptation to the project's API. You need to modify it to match the project's actual API. This may involve changing import statements, function calls, and assertions in your **new test files**.
+          e.  **Iterate and Verify**: Run `run_pytest` on your migrated and adapted tests. Analyze failures. **Remember, the source code is expected to have bugs, so test failures are normal.** Your goal is to fix any errors in your test code (e.g., incorrect API usage). You do not need to make all tests pass. Your task is complete when you are confident the tests are correctly migrated and adapted to the project's interface.
+
+      FINAL SUBMISSION:
+      Once you are confident that you have migrated and correctly adapted the relevant parts of the test suite from `/reference_repo` to the project's API, use the `submit` command to finish the task. It is not necessary for all tests to pass.
+      
+      Environment Limitations:
+      *   Interactive session commands (e.g., `python` interpreter, `vim`, `nano`) are NOT available.
+      *   However, you can write scripts (e.g., a Python script `my_script.py`) and then execute them (e.g., `python my_script.py`).
+    instance_template: |-
+      <uploaded_files>
+      {{working_dir}}
+      </uploaded_files>
+
+      I have uploaded a Python project in the `{{working_dir}}` directory. It was created by a development agent based on the requirements in `/project_requirements.md`.
+
+      Please follow your instructions to migrate the test suite from `/reference_repo` to this project.
+    next_step_template: |-
+      {{observation}}
+    next_step_no_output_template: |-
+      Your command ran successfully and did not produce any output. 
+      **Remember: the project is likely incomplete or buggy, so test failures are expected. Focus on writing correct test implementations.**
+  tools:
+    execution_timeout: 300
+    bundles:
+      - path: tools/registry
+      - path: tools/edit_anthropic
+      - path: tools/run_pytest
+      - path: tools/submit
+      - path: tools/giveup
+      - path: tools/diff_state
+    enable_bash_tool: true
+    parse_function:
+      type: function_calling
+    registry_variables:
+      USE_FILEMAP: 'true'
+      USE_LINTER: 'true'
+  history_processors:
+    - type: cache_control
+      last_n_messages: 2
+  model:
+    name: claude-3-7-sonnet-20250219
+    per_instance_cost_limit: 2
+    per_instance_call_limit: 150
+    total_cost_limit: 1000.0
+    temperature: 0.0
+    delay: 0.0 

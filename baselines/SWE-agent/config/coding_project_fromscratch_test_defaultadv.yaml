@@ -1,0 +1,86 @@
+# This template is heavily inspired by anthropic and openhands
+# For running on lite:
+# sweagent run-batch --num_workers=20 --instances.type=swe_bench --instances.subset=lite --instances.split=test --instances.shuffle=True --instances.evaluate=True --instances.deployment.docker_args='--memory=10g' --config config/250225_anthropic_filemap_simple_review.yaml
+# For running on test:
+
+agent:
+  type: default
+  templates:
+    system_template: |-
+      You are a helpful assistant that can interact with a computer to solve tasks.
+    instance_template: |-
+      <uploaded_files>
+      {{working_dir}}
+      </uploaded_files>
+      I've uploaded a python code repository in the directory {{working_dir}}. 
+      Your objective is to develop a Python project from scratch based on the following requirements:
+
+      Requirements Document:
+      <requirements_document>
+      {{problem_statement}}
+      </requirements_document>
+
+      INSTRUCTIONS:
+      You are tasked with implementing the Python project as detailed in the requirements document above.
+      You will need to write all the code from scratch, including any necessary test cases to verify your implementation.
+      You are in a simulated terminal environment, starting in the repository's root directory.
+      You can use standard bash commands and a special interface for file operations (editing, creating) and submitting your work.
+      You will need to create and/or edit Python files to build the project.
+      When you are satisfied with all your changes, submit your work using the `submit` command.
+      If you think you cannot solve the problem, please run `exit_giveup` to give up on the current task and terminate the session.
+
+      Key Guidelines:
+      *   **You must write the code from scratch. There are no pre-existing code skeletons.**
+      *   **You must also write your own test cases to ensure your implementation meets the requirements. A testing framework like `pytest` is available.**
+      *   Always wait for feedback after each command before issuing the next.
+
+      Environment Limitations:
+      *   Interactive session commands (e.g., `python` interpreter, `vim`, `nano`) are NOT available.
+      *   However, you can write scripts (e.g., a Python script `my_script.py`) and then execute them (e.g., `python my_script.py`).
+
+      **IMPORTANT NOTE ON ENVIRONMENT AND DEPENDENCIES:**
+      The Python project environment has been **fully configured with all necessary base dependencies and is ready for your development work**. You have all the necessary tools and standard Python libraries for this task.
+      *   **If you encounter a `ModuleNotFoundError: No module named '<module_name>'` error:** This indicates that the specific third-party library you are attempting to use is *not* available in this pre-configured and intentionally fixed environment.
+      *   **Your course of action should be to modify your code.** Consider the following approaches:
+          *   Rewrite the relevant logic using available standard Python libraries.
+          *   Find an alternative implementation strategy that does not rely on the missing external package.
+          *   Simplify the feature if the dependency is critical for a complex part and cannot be easily replaced.
+      *   **Crucially, do NOT attempt to install new libraries (e.g., using `pip install`) or alter the existing environment in any way. The environment is immutable.** Your focus must be on adapting your code to work within the provided, complete environment.
+
+      IMPORTANT TIPS:
+      1.  **Development and Testing Workflow:**
+          a.  Implement the required features in Python files.
+          b.  Create corresponding test files (e.g., `test_your_feature.py`) to validate your code.
+          c.  Use the `run_pytest` command to execute your tests.
+          d.  Review the test results, debug your code if necessary, and repeat until all your tests pass.
+      2.  **Context Awareness (File & Directory):** Always pay attention to the `Currently open file` and `Current working directory` displayed in the prompt. These can be different! Note that commands like `create` (for new files) will change the `Currently open file`.
+      3.  **Final Submission:** Once all your tests pass and you are confident your implementation is complete, use the `submit` command.
+    next_step_template: |-
+      {{observation}}
+    next_step_no_output_template: |-
+      Your command ran successfully and did not produce any output.
+  tools:
+    execution_timeout: 300
+    bundles:
+      - path: tools/registry
+      - path: tools/edit_anthropic
+      - path: tools/run_pytest
+      - path: tools/submit
+      - path: tools/giveup
+      - path: tools/diff_state
+    enable_bash_tool: true
+    parse_function:
+      type: function_calling
+    registry_variables:
+      USE_FILEMAP: 'true'
+      USE_LINTER: 'true'
+  history_processors:
+    - type: cache_control
+      last_n_messages: 2
+  model:
+    name: claude-3-7-sonnet-20250219
+    per_instance_cost_limit: 2
+    per_instance_call_limit: 150
+    total_cost_limit: 1000.0
+    temperature: 0.0
+    delay: 0.0

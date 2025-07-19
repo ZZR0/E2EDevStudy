@@ -1,0 +1,149 @@
+#!/usr/bin/env python3
+
+import argparse
+import json
+import os
+from dataclasses import dataclass, asdict, field
+from typing import List, Dict, Optional
+
+HISTORY_FILE = "/tmp/sequential_thinking_history.json"
+
+@dataclass
+class ThoughtData:
+    thought: str
+    thought_number: int
+    total_thoughts: int
+    next_thought_needed: bool
+    is_revision: Optional[bool] = None
+    revises_thought: Optional[int] = None
+    branch_from_thought: Optional[int] = None
+    branch_id: Optional[str] = None
+    needs_more_thoughts: Optional[bool] = None
+
+@dataclass
+class ToolState:
+    thought_history: List[ThoughtData] = field(default_factory=list)
+    branches: Dict[str, List[ThoughtData]] = field(default_factory=dict)
+
+def load_state() -> ToolState:
+    if not os.path.exists(HISTORY_FILE):
+        return ToolState()
+    try:
+        with open(HISTORY_FILE, "r") as f:
+            data = json.load(f)
+            # The from_dict classmethod is not real, so we need to manually construct the object
+            thought_history = [ThoughtData(**t) for t in data.get("thought_history", [])]
+            # branches have lists of thoughts
+            branches_data = data.get("branches", {})
+            branches = {k: [ThoughtData(**t) for t in v] for k, v in branches_data.items()}
+            return ToolState(thought_history=thought_history, branches=branches)
+    except (json.JSONDecodeError, TypeError):
+        return ToolState()
+
+def save_state(state: ToolState):
+    with open(HISTORY_FILE, "w") as f:
+        json.dump(asdict(state), f, indent=2)
+
+def validate_args(args):
+    """Validate arguments."""
+    if args.thought_number < 1:
+        raise ValueError("thought_number must be at least 1")
+    if args.total_thoughts < 1:
+        raise ValueError("total_thoughts must be at least 1")
+    if args.revises_thought is not None and args.revises_thought < 1:
+        raise ValueError("revises_thought must be a positive integer")
+    if args.branch_from_thought is not None and args.branch_from_thought < 1:
+        raise ValueError("branch_from_thought must be a positive integer")
+
+def format_thought(thought_data: ThoughtData) -> str:
+    """Format a thought for display."""
+    prefix = ""
+    context = ""
+    if thought_data.is_revision:
+        prefix = "🔄 Revision"
+        context = f" (revising thought {thought_data.revises_thought})"
+    elif thought_data.branch_from_thought:
+        prefix = "🌿 Branch"
+        context = f" (from thought {thought_data.branch_from_thought}, ID: {thought_data.branch_id})"
+    else:
+        prefix = "💭 Thought"
+    header = f"{prefix} {thought_data.thought_number}/{thought_data.total_thoughts}{context}"
+    border_length = max(len(header), len(thought_data.thought)) + 4
+    border = "─" * border_length
+    return f"""
+┌{border}┐
+│ {header.ljust(border_length - 2)} │
+├{border}┤
+│ {thought_data.thought.ljust(border_length - 2)} │
+└{border}┘"""
+
+def main():
+    parser = argparse.ArgumentParser(description="Sequential Thinking Tool")
+    parser.add_argument("--thought", type=str, required=True)
+    parser.add_argument("--next_thought_needed", type=lambda x: (str(x).lower() == 'true'), required=True)
+    parser.add_argument("--thought_number", type=int, required=True)
+    parser.add_argument("--total_thoughts", type=int, required=True)
+    parser.add_argument("--is_revision", action='store_true')
+    parser.add_argument("--revises_thought", type=int)
+    parser.add_argument("--branch_from_thought", type=int)
+    parser.add_argument("--branch_id", type=str)
+    parser.add_argument("--needs_more_thoughts", action='store_true')
+    
+    # The SWE-agent framework passes arguments as a single string, so we need to parse it.
+    # The arguments are passed as environment variables by the wrapper, let's read them from there.
+    # For this script, we'll assume they are passed as command line arguments for now.
+    # The framework will call this script with the arguments.
+    
+    try:
+        args = parser.parse_args()
+        validate_args(args)
+
+        thought_data = ThoughtData(
+            thought=args.thought,
+            thought_number=args.thought_number,
+            total_thoughts=args.total_thoughts,
+            next_thought_needed=args.next_thought_needed,
+            is_revision=args.is_revision if args.is_revision else None,
+            revises_thought=args.revises_thought,
+            branch_from_thought=args.branch_from_thought,
+            branch_id=args.branch_id,
+            needs_more_thoughts=args.needs_more_thoughts if args.needs_more_thoughts else None
+        )
+        
+        # Adjust total thoughts if current thought number exceeds it
+        if thought_data.thought_number > thought_data.total_thoughts:
+            thought_data.total_thoughts = thought_data.thought_number
+
+        state = load_state()
+        state.thought_history.append(thought_data)
+
+        if thought_data.branch_from_thought and thought_data.branch_id:
+            if thought_data.branch_id not in state.branches:
+                state.branches[thought_data.branch_id] = []
+            state.branches[thought_data.branch_id].append(thought_data)
+        
+        save_state(state)
+        
+        formatted_thought = format_thought(thought_data)
+        print(formatted_thought, flush=True)
+
+        response_data = {
+            "thought_number": thought_data.thought_number,
+            "total_thoughts": thought_data.total_thoughts,
+            "next_thought_needed": thought_data.next_thought_needed,
+            "branches": list(state.branches.keys()),
+            "thought_history_length": len(state.thought_history)
+        }
+        
+        print(f"\nSequential thinking step completed.\n\nStatus:\n{json.dumps(response_data, indent=2)}")
+
+    except Exception as e:
+        error_data = {
+            "error": str(e),
+            "status": "failed"
+        }
+        print(f"Sequential thinking failed: {str(e)}\n\nDetails:\n{json.dumps(error_data, indent=2)}")
+        exit(1)
+
+if __name__ == "__main__":
+    main() 

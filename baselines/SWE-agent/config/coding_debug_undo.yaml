@@ -1,0 +1,53 @@
+# This template is heavily inspired by anthropic and openhands
+# For running on lite:
+# sweagent run-batch --num_workers=20 --instances.type=swe_bench --instances.subset=lite --instances.split=test --instances.shuffle=True --instances.evaluate=True --instances.deployment.docker_args='--memory=10g' --config config/250225_anthropic_filemap_simple_review.yaml
+# For running on test:
+
+agent:
+  type: default
+  templates:
+    system_template: |-
+      You are a helpful assistant that can interact with a computer to solve tasks.
+    instance_template: |-
+      <uploaded_files>
+      {{working_dir}}
+      </uploaded_files>
+      I've uploaded a python code repository in the directory {{working_dir}}. 
+      
+      This is a debug mode, please first create some files, then edit them, and then call `undo_edit` to undo the edit. So that we can see if the edit is undone correctly.
+
+      (Open file: {{open_file}})
+      (Current directory: {{working_dir}})
+    next_step_template: |-
+      OBSERVATION:
+      {{observation}}
+      (Open file: {{open_file}})
+      (Current directory: {{working_dir}})
+    next_step_no_output_template: |-
+      Your command ran successfully and did not produce any output.
+      (Open file: {{open_file}})
+      (Current directory: {{working_dir}})
+  tools:
+    execution_timeout: 300
+    bundles:
+      - path: tools/registry
+      - path: tools/edit_anthropic
+      - path: tools/submit
+      - path: tools/diff_state
+      - path: tools/run_pytest
+    enable_bash_tool: true
+    parse_function:
+      type: function_calling
+    registry_variables:
+      USE_FILEMAP: 'true'
+  history_processors:
+    - type: cache_control
+      last_n_messages: 2
+  model:
+    name: claude-3-7-sonnet-20250219
+    api_key: $CLAUDE_API_KEY_ROTATION
+    per_instance_cost_limit: 2
+    per_instance_call_limit: 150
+    total_cost_limit: 1000.0
+    temperature: 0.0
+    delay: 0.0

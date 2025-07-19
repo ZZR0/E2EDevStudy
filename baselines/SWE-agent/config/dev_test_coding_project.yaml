@@ -1,0 +1,157 @@
+# This config is for the DevTestAgent, which uses two sub-agents.
+# Agent 1 (dev_agent): Focuses on writing the initial implementation.
+# Agent 2 (test_agent): Focuses on running tests and fixing the code.
+
+agent:
+  type: dev_test
+  dev:
+    # ==================================
+    # ===== Configuration for Dev Agent =====
+    # ==================================
+    name: dev_agent
+    templates:
+      system_template: |-
+        You are a helpful assistant that can interact with a computer to solve tasks.
+      instance_template: |-
+        <uploaded_files>
+        {{working_dir}}
+        </uploaded_files>
+        I've uploaded a python code repository in the directory {{working_dir}}. 
+        Your objective is to develop a Python project based on the following requirements. Your work will be tested by another agent later.
+
+        Requirements Document:
+        <requirements_document>
+        {{problem_statement}}
+        </requirements_document>
+
+        INSTRUCTIONS:
+        You are tasked with implementing the Python project as detailed in the requirements document above.
+        You are in a simulated terminal environment, starting in the repository's root directory.
+        You can use standard bash commands and a special interface for file operations (editing, creating).
+        Focus on implementing the core logic and features. You do not need to run tests.
+        When you believe your implementation is complete, use the `submit` command.
+        If you think you cannot solve the problem, please run `exit_giveup` to give up on the current task and terminate the session.
+
+        Key Guidelines:
+        *   **I have already provided partial key code skeletons within the current project. It is highly recommended that you first review these code skeletons, which need to be filled and completed, before proceeding with the rest of the project. Pay special attention to adding complete import statements to ensure the program can run correctly.**
+        *   Always wait for feedback after each command before issuing the next.
+        
+        Environment Limitations:
+        *   Interactive session commands (e.g., `python` interpreter, `vim`, `nano`) are NOT available.
+        *   However, you can write scripts (e.g., a Python script `my_script.py`) and then execute them (e.g., `python my_script.py`).
+
+        **IMPORTANT NOTE ON ENVIRONMENT AND DEPENDENCIES:**
+        The Python project environment has been **fully configured with all necessary base dependencies and is ready for your development work**. You have all the necessary tools and standard Python libraries for this task.
+        *   **If you encounter a `ModuleNotFoundError: No module named '<module_name>'` error:** This indicates that the specific third-party library you are attempting to use is *not* available in this pre-configured and intentionally fixed environment.
+        *   **Your course of action should be to modify your code.** Consider the following approaches:
+            *   Rewrite the relevant logic using available standard Python libraries.
+            *   Find an alternative implementation strategy that does not rely on the missing external package.
+            *   Simplify the feature if the dependency is critical for a complex part and cannot be easily replaced.
+        *   **Crucially, do NOT attempt to install new libraries (e.g., using `pip install`) or alter the existing environment in any way. The environment is immutable.** Your focus must be on adapting your code to work within the provided, complete environment.
+
+        IMPORTANT TIPS:
+        1.  **Context Awareness (File & Directory):** Always pay attention to the `Currently open file` and `Current working directory` displayed in the prompt. These can be different! Note that commands like `create` (for new files) will change the `Currently open file`.
+        2.  **Do Not Modify Test Files:** Do not modify any existing test files or the testing infrastructure itself. Your primary goal is to make the project code pass the *existing* tests.
+
+        (Open file: {{open_file}})
+        (Current directory: {{working_dir}})
+      next_step_template: |-
+        OBSERVATION:
+        {{observation}}
+        (Open file: {{open_file}})
+        (Current directory: {{working_dir}})
+    tools:
+      execution_timeout: 300
+      bundles:
+        - path: tools/registry
+        - path: tools/edit_anthropic
+        - path: tools/submit
+        - path: tools/giveup
+        - path: tools/diff_state
+      enable_bash_tool: true
+      parse_function:
+        type: function_calling
+    history_processors:
+      - type: cache_control
+        last_n_messages: 2
+    model:
+      name: gemini/gemini-2.5-flash
+      temperature: 0.2
+      per_instance_cost_limit: 1.0
+      per_instance_call_limit: 50
+      max_input_tokens: 128000
+  test:
+    # ===================================
+    # ===== Configuration for Test Agent =====
+    # ===================================
+    name: test_agent
+    templates:
+      system_template: |-
+        You are a helpful assistant that specializes in testing and debugging code.
+      instance_template: |-
+        A developer has just completed their implementation of a Python project. Here is their proposed change:
+        <patch>
+        {{diff}}
+        </patch>
+
+        Your job is to test it and fix any issues you find.
+        The project code is in the {{working_dir}} directory.
+
+        INSTRUCTIONS:
+        1.  **Run Tests:** Use the `run_pytest` command to execute the test suite.
+        2.  **Analyze Failures:** Review the output from `run_pytest`. Your sole focus should be on tests explicitly marked as `FAILED`. Ignore all warnings.
+        3.  **Debug and Fix:** Based on the test failures, inspect the relevant code, make edits to fix the bugs.
+        4.  **Iterate:** Repeat steps 1-3 until all tests pass.
+        5.  **Submit:** Once all tests pass, use the `submit` command to finalize the work.
+        6.  **Give Up:** If you think you cannot solve the problem, please run `exit_giveup` to give up on the current task and terminate the session.
+
+        Environment Limitations:
+        *   Interactive session commands (e.g., `python` interpreter, `vim`, `nano`) are NOT available.
+        *   However, you can write scripts (e.g., a Python script `my_script.py`) and then execute them (e.g., `python my_script.py`).
+
+        **IMPORTANT NOTE ON ENVIRONMENT AND DEPENDENCIES:**
+        The Python project environment has been **fully configured with all necessary base dependencies and is ready for your development work**. You have all the necessary tools and standard Python libraries for this task.
+        *   **If you encounter a `ModuleNotFoundError: No module named '<module_name>'` error:** This indicates that the specific third-party library you are attempting to use is *not* available in this pre-configured and intentionally fixed environment.
+        *   **Your course of action should be to modify your code.** Consider the following approaches:
+            *   Rewrite the relevant logic using available standard Python libraries.
+            *   Find an alternative implementation strategy that does not rely on the missing external package.
+            *   Simplify the feature if the dependency is critical for a complex part and cannot be easily replaced.
+        *   **Crucially, do NOT attempt to install new libraries (e.g., using `pip install`) or alter the existing environment in any way. The environment is immutable.** Your focus must be on adapting your code to work within the provided, complete environment.
+
+        IMPORTANT TIPS:
+        1.  **Context Awareness (File & Directory):** Always pay attention to the `Currently open file` and `Current working directory` displayed in the prompt. These can be different! Note that commands like `create` (for new files) will change the `Currently open file`.
+        2.  **Do Not Modify Test Files:** Do not modify any existing test files or the testing infrastructure itself. Your primary goal is to make the project code pass the *existing* tests.
+
+        (Open file: {{open_file}})
+        (Current directory: {{working_dir}})
+      next_step_template: |-
+        OBSERVATION:
+        {{observation}}
+        (Open file: {{open_file}})
+        (Current directory: {{working_dir}})
+    tools:
+      execution_timeout: 300
+      bundles:
+        - path: tools/registry
+        - path: tools/edit_anthropic
+        - path: tools/run_pytest
+        - path: tools/submit
+        - path: tools/giveup
+        - path: tools/diff_state
+      enable_bash_tool: true
+      parse_function:
+        type: function_calling
+    history_processors:
+      - type: cache_control
+        last_n_messages: 2
+    model:
+      name: gemini/gemini-2.5-flash
+      temperature: 0.2
+      per_instance_cost_limit: 5.0
+      per_instance_call_limit: 100
+      max_input_tokens: 128000
+
+# Global settings that might apply to the overarching DevTestAgent
+# None are strictly needed for the agent itself, but you could define overall cost limits here if the logic supported it.
+# For now, cost limits are managed within each sub-agent's model config.
+# total_cost_limit: 1000.0 

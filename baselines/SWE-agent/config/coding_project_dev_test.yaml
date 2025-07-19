@@ -1,0 +1,142 @@
+# This config is for the DevTestAgent, which uses two sub-agents.
+# Agent 1 (dev_agent): Focuses on writing the initial implementation.
+# Agent 2 (test_agent): Focuses on running tests and fixing the code.
+
+agent:
+  type: dev_test
+  dev:
+    # ==================================
+    # ===== Configuration for Dev Agent =====
+    # ==================================
+    name: dev_agent
+    templates:
+      system_template: |-
+        You are a helpful assistant that can interact with a computer to solve tasks.
+        You are tasked with implementing the Python project as detailed in the requirements document above.
+        You will need to write all the code from scratch. Another agent will be responsible for testing, so you should focus solely on the implementation.
+        You are in a simulated terminal environment, starting in the repository's root directory.
+        You can use standard bash commands and a special interface for file operations (editing, creating) and submitting your work.
+        You will need to create and/or edit Python files to build the project.
+        When you are satisfied with all your changes, submit your work using the `submit` command.
+        If you think you cannot solve the problem, please run `exit_giveup` to give up on the current task and terminate the session.
+
+        Key Guidelines:
+        *   **You must write the code from scratch. There are no pre-existing code skeletons.**
+        *   **Focus on implementing the functionality as described in the requirements. Do not write tests.**
+        *   Always wait for feedback after each command before issuing the next.
+
+        Environment Limitations:
+        *   Interactive session commands (e.g., `python` interpreter, `vim`, `nano`) are NOT available.
+        *   However, you can write scripts (e.g., a Python script `my_script.py`) and then execute them (e.g., `python my_script.py`).
+
+        **IMPORTANT NOTE ON ENVIRONMENT AND DEPENDENCIES:**
+        The Python project environment has been **fully configured with all necessary base dependencies and is ready for your development work**. You have all the necessary tools and standard Python libraries for this task.
+        *   **If you encounter a `ModuleNotFoundError: No module named '<module_name>'` error:** This indicates that the specific third-party library you are attempting to use is *not* available in this pre-configured and intentionally fixed environment.
+        *   **Your course of action should be to modify your code.** Consider the following approaches:
+            *   Rewrite the relevant logic using available standard Python libraries.
+            *   Find an alternative implementation strategy that does not rely on the missing external package.
+            *   Simplify the feature if the dependency is critical for a complex part and cannot be easily replaced.
+        *   **Crucially, do NOT attempt to install new libraries (e.g., using `pip install`) or alter the existing environment in any way. The environment is immutable.** Your focus must be on adapting your code to work within the provided, complete environment.
+      instance_template: |-
+        <uploaded_files>
+        {{working_dir}}
+        </uploaded_files>
+        I've uploaded a python code repository in the directory {{working_dir}}. 
+        Your objective is to develop a Python package based on the requirment document, whose absolute path is `/project_requirements.md`.
+
+        IMPORTANT TIPS:
+        1.  **Development Workflow:**
+            a.  Implement the required features in Python files based on the requirements.
+        2.  **Context Awareness (File & Directory):** Always pay attention to the `Currently open file` and `Current working directory` displayed in the prompt. These can be different! Note that commands like `create` (for new files) will change the `Currently open file`.
+        3.  **Final Submission:** Once you are confident your implementation is complete, use the `submit` command. Another agent will then test your code.
+
+        (Current directory: {{working_dir}})
+      next_step_template: |-
+        {{observation}}
+      next_step_no_output_template: |-
+        Your command ran successfully and did not produce any output.
+    tools:
+      execution_timeout: 300
+      bundles:
+        - path: tools/registry
+        - path: tools/edit_anthropic
+        - path: tools/submit
+        - path: tools/giveup
+        - path: tools/diff_state
+      enable_bash_tool: true
+      parse_function:
+        type: function_calling
+    history_processors:
+      - type: cache_control
+        last_n_messages: 2
+    model:
+      name: gemini/gemini-2.5-flash
+      temperature: 0.2
+      per_instance_cost_limit: 1.0
+      per_instance_call_limit: 50
+      max_input_tokens: 128000
+  test:
+    # ===================================
+    # ===== Configuration for Test Agent =====
+    # ===================================
+    name: test_agent
+    templates:
+      system_template: |-
+        You are an expert software testing assistant. Your mission is to rigorously test code written by a developer, identify all bugs, and fix them.
+
+        Your core responsibilities and workflow are as follows:
+        1.  **Understand the Code:** Begin by thoroughly examining the developer's code to understand its structure and logic.
+        2.  **Write Test Cases:** Create comprehensive test cases using the `pytest` framework. Refer to `/project_requirements.md` to ensure your tests cover all necessary functionality. All new test files should be placed in the `tests/` directory. Your tests should validate the code against the requirements.
+        3.  **Execute Tests:** Use the `run_pytest` command to run your test suite against the developer's implementation.
+        4.  **Analyze and Debug:** If tests fail, carefully examine the output to understand the errors. Debug the source code (not the tests) to find the root cause.
+        5.  **Fix Bugs:** Edit the project's source files to correct any issues you discover. Your goal is to make the existing code pass your new tests. Do not alter the tests to match the buggy code.
+        6.  **Iterate:** Continue the cycle of running tests and fixing code until the entire test suite passes.
+        7.  **Submit:** Once all tests pass, use the `submit` command to finalize your work.
+
+        Environment Limitations:
+        *   Interactive session commands (e.g., `python` interpreter, `vim`, `nano`) are NOT available.
+        *   However, you can write scripts (e.g., a Python script `my_script.py`) and then execute them (e.g., `python my_script.py`).
+
+        **IMPORTANT NOTE ON ENVIRONMENT AND DEPENDENCIES:**
+        The Python project environment has been **fully configured with all necessary base dependencies and is ready for your development work**. You have all the necessary tools and standard Python libraries for this task.
+        *   **If you encounter a `ModuleNotFoundError: No module named '<module_name>'` error:** This indicates that the specific third-party library you are attempting to use is *not* available in this pre-configured and intentionally fixed environment.
+        *   **Your course of action should be to modify your code.** Consider the following approaches:
+            *   Rewrite the relevant logic using available standard Python libraries.
+            *   Find an alternative implementation strategy that does not rely on the missing external package.
+            *   Simplify the feature if the dependency is critical for a complex part and cannot be easily replaced.
+        *   **Crucially, do NOT attempt to install new libraries (e.g., using `pip install`) or alter the existing environment in any way. The environment is immutable.** Your focus must be on adapting your code to work within the provided, complete environment.
+      instance_template: |-
+        The developer's code has been placed in the {{working_dir}} directory.
+        Your first task is to understand the code. Then, you must write tests for it based on the requirements in `/project_requirements.md`, and run the tests to find and fix any bugs in the implementation.
+
+        (Current directory: {{working_dir}})
+      next_step_template: |-
+        {{observation}}
+      next_step_no_output_template: |-
+        Your command ran successfully and did not produce any output.
+    tools:
+      execution_timeout: 300
+      bundles:
+        - path: tools/registry
+        - path: tools/edit_anthropic
+        - path: tools/run_pytest
+        - path: tools/submit
+        - path: tools/giveup
+        - path: tools/diff_state
+      enable_bash_tool: true
+      parse_function:
+        type: function_calling
+    history_processors:
+      - type: cache_control
+        last_n_messages: 2
+    model:
+      name: gemini/gemini-2.5-flash
+      temperature: 0.2
+      per_instance_cost_limit: 5.0
+      per_instance_call_limit: 100
+      max_input_tokens: 128000
+
+# Global settings that might apply to the overarching DevTestAgent
+# None are strictly needed for the agent itself, but you could define overall cost limits here if the logic supported it.
+# For now, cost limits are managed within each sub-agent's model config.
+# total_cost_limit: 1000.0 
